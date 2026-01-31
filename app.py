@@ -21,6 +21,11 @@ def cleanup_old_files():
             try: os.remove(path)
             except: pass
 
+# --- এই অংশটি নতুন যোগ করা হয়েছে যাতে Not Found না দেখায় ---
+@app.route('/')
+def home():
+    return "Special Smart API is Running! Use /download endpoint to download videos."
+
 @app.route('/download', methods=['GET'])
 def smart_download():
     cleanup_old_files()
@@ -28,26 +33,21 @@ def smart_download():
     format_type = request.args.get('format', 'mp4')
 
     if not video_url:
-        return "URL missing", 400
+        return "Please provide a URL. Example: /download?url=LINK&format=mp4", 400
 
     unique_name = f"special_{str(uuid.uuid4())[:8]}"
     
-    # ইউজার এজেন্ট লিস্ট
     user_agents = [
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
     ]
 
     try:
-        # ১. প্রথমেই ভিডিওর ইনফরমেশন চেক করা (ধারণক্ষমতা বুঝতে)
         with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
             info = ydl.extract_info(video_url, download=False)
             duration = info.get('duration', 0)
-            print(f"Video duration: {duration} seconds")
 
-        # ২. স্মার্ট কোয়ালিটি রাউটিং (আপনার শর্ত অনুযায়ী)
         if format_type == 'mp3':
-            # অডিওর ক্ষেত্রে কোনো আপোষ নেই - সবসময় বেস্ট
             format_logic = 'bestaudio/best'
             postprocessor = [{
                 'key': 'FFmpegExtractAudio',
@@ -56,17 +56,13 @@ def smart_download():
             }]
         else:
             postprocessor = []
-            if duration < 300: # ৫ মিনিটের নিচে
+            if duration < 300: # 5 min
                 format_logic = 'bestvideo+bestaudio/best'
-                print("Setting: 4K/1080p (Best)")
-            elif duration < 1200: # ৫-২০ মিনিট
+            elif duration < 1200: # 20 min
                 format_logic = 'bestvideo[height<=720]+bestaudio/best[height<=720]'
-                print("Setting: 720p (HD)")
-            else: # ২০ মিনিটের বেশি
+            else:
                 format_logic = 'bestvideo[height<=480]+bestaudio/best[height<=480]'
-                print("Setting: 480p (SD)")
 
-        # ৩. ফাইনাল ডাউনলোড সেটিংস
         ydl_opts = {
             'format': format_logic,
             'outtmpl': f'{DOWNLOAD_FOLDER}/{unique_name}.%(ext)s',
@@ -76,14 +72,13 @@ def smart_download():
             'merge_output_format': 'mp4' if format_type == 'mp4' else None,
             'postprocessors': postprocessor,
             'quiet': True,
+            'no_warnings': True,
             'noplaylist': True,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             final_info = ydl.extract_info(video_url, download=True)
             filename = ydl.prepare_filename(final_info)
-            
-            # MP3 ফিক্স
             if format_type == 'mp3':
                 filename = os.path.splitext(filename)[0] + '.mp3'
             
